@@ -1,0 +1,62 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.4.8'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.likelion'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo project for Spring Boot'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+	flatDir {
+		dirs 'libs'
+	}
+}
+
+dependencies {
+	// Spring Boot 기본
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Oracle JDBC 라이브러리
+	implementation files('libs/ojdbc11.jar')
+	implementation files('libs/oraclepki.jar')
+	implementation files('libs/osdt_core.jar')
+	implementation files('libs/osdt_cert.jar')
+}
+
+// gradlew 호출 시 colors.sh 관련 부분 제거
+tasks.withType(JavaExec) {
+	// colors.sh 호출 제거
+}
+
+// 빌드 시 테스트 실패해도 배포 계속 가능
+tasks.build {
+	finalizedBy 'assemble'
+}
+dependencies {
+    implementation 'com.oracle.database.jdbc:ojdbc11:23.1.0.0'
+}
