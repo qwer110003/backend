@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>자리어때</title>
+    <link href="./index.css" rel="stylesheet">
+    <!-- Kakao 지도 SDK, autoload=false -->
+    <script type="text/javascript" 
+            src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=cf49e414e83e11174542340618560ddf&autoload=false"></script>
+</head>
+<body>
+    <!-- 헤더 -->
+    <header class="nav-style">
+        <div class="nav-logo">
+            <a href="./index.html">
+                <img src="./자리어때.svg" class="logo-img">
+            </a>
+        </div>
+        <div class="top-bar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="매장 검색..." oninput="searchStores()" >
+                <button class="search-btn" onclick="toggleSearch()">
+                    <img src="./fi-rs-search.svg" class="search-icn">
+                </button>
+            </div>
+            <button class="notification-btn" onclick="toggleNotificationPanel()">
+                <img src="./fi-rs-bell.svg" class="notification-icn">
+            </button>
+        </div>
+        <div class="notification-panel" id="notificationPanel">
+        </div>
+    </header>
+
+    <!-- 지도 영역 -->
+    <div id="map"></div>
+
+    <!-- 매장 리스트 바텀시트 -->
+    <div class="bottom-sheet" id="bottomSheet">
+        <div class="drag-bar" id="dragBar"></div>
+        <div class="filters">
+            <div class="filter-btn" onclick="toggleSort('crowd')">
+                <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="width: clamp(20px, 6.5vw, 80px);">
+                    <circle cx="12" cy="9" r="4"/>
+                    <circle cx="17" cy="9" r="3"/>
+                    <circle cx="7" cy="9" r="3"/>
+                    <path d="M17 13C19.4478 13.0001 20.4286 15.4456 20.7969 16.916C20.9406 17.4899 20.4862 18 19.8945 18H17.5684C17.1653 16.4903 16.3855 14.778 14.8779 13.7998C15.4201 13.321 16.1137 13 17 13Z"/>
+                    <path d="M7 13C7.88599 13 8.57903 13.3212 9.12109 13.7998C7.61395 14.7781 6.83465 16.4905 6.43164 18H4.10449C3.51309 17.9997 3.05944 17.4898 3.20312 16.916C3.57139 15.4456 4.55216 13 7 13Z"/>
+                    <path d="M12 14C15.7087 14 16.6665 17.301 16.9139 19.0061C16.9932 19.5526 16.5523 20 16 20H8C7.44772 20 7.00684 19.5526 7.08614 19.0061C7.33351 17.301 8.29134 14 12 14Z"/>
+                </svg>   
+
+                <p class="btn-txt">혼잡도</p>
+                <img src="./arrow.svg" style="width: clamp(20px, 6.5vw, 80px)" id="crowdArrow">
+            </div>
+
+            <div class="filter-btn" onclick="toggleSort('distance')">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: clamp(20px, 6.5vw, 80px);">
+                    <path d="M12 2C15.866 2 19 5.13401 19 9C19 14.0159 13.8819 17.0342 12.3984 17.8037C12.1456 17.9349 11.8544 17.9349 11.6016 17.8037C10.1181 17.0342 5 14.0159 5 9C5 5.13401 8.13401 2 12 2ZM12 6C10.3431 6 9 7.34315 9 9C9 10.6569 10.3431 12 12 12C13.6569 12 15 10.6569 15 9C15 7.34315 13.6569 6 12 6Z" fill="currentColor"/>
+                    <path d="M18.0622 16.5C18.6766 16.9561 19 17.4734 19 18C19 18.5266 18.6766 19.0439 18.0622 19.5C17.4478 19.9561 16.5641 20.3348 15.5 20.5981C14.4359 20.8614 13.2288 21 12 21C10.7712 21 9.56414 20.8614 8.5 20.5981C7.43587 20.3348 6.5522 19.9561 5.93782 19.5C5.32344 19.0439 5 18.5266 5 18C5 17.4734 5.32344 16.9561 5.93782 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>                                                
+                <p class="btn-txt">거리순</p>
+                <img src="./arrow.svg" style="width: clamp(20px, 6.5vw, 80px)" id="distanceArrow">
+            </div>
+
+        </div>
+
+        <div class="store-list" id="storeList">
+    </div>
+
+    <script>
+    // 전역 변수
+    let map;
+
+    async function loadStores() {
+        try {
+            const res = await fetch("http://localhost:8081/stores"); // ← 백엔드 API 주소
+            let stores = await res.json();
+
+            // addrUrl을 프론트에서 동적으로 추가
+            stores = stores.map(store => ({
+            ...store,
+            addrUrl: `kakaomap://search?q=${encodeURIComponent(store.name)}`
+            }));
+
+            renderStores(stores); // 기존 그려주는 함수 호출
+        } catch (err) {
+            console.error("가게 데이터를 불러오는 중 오류 발생:", err);
+        }
+    }
+
+    loadStores();
+
+    // 하드코딩 매장 데이터
+    const stores = [
+        { name: "치킨집 A", address: "서울시 강남구", latitude: 37.497946, longitude: 127.027619, level: "여유", addrUrl: `kakaomap://search?q=${encodeURIComponent("치킨집 A")}`},
+        { name: "치킨집 B", address: "서울시 서초구", latitude: 37.491944, longitude: 127.025555, level: "보통", addrUrl: `kakaomap://search?q=${encodeURIComponent("치킨집 B")}`},
+        { name: "치킨집 C", address: "서울시 송파구", latitude: 37.504296, longitude: 127.106598, level: "혼잡", addrUrl: `kakaomap://search?q=${encodeURIComponent("치킨집 C")}`}
+    ];
+
+    // 지도 초기화
+    function initMap() {
+        const mapContainer = document.getElementById('map'); 
+        const mapOption = { 
+            center: new kakao.maps.LatLng(36.841236, 127.181333), // 지도 중심
+            level: 3 // 확대 레벨
+        };
+
+        map = new kakao.maps.Map(mapContainer, mapOption); 
+
+        // 마커 로드
+        loadStores();
+    }
+
+    // 매장 마커 표시
+    function loadStores() {
+        stores.forEach(store => {
+            // 혼잡도별 마커 이미지 선택
+            let markerImg = '';
+            if (store.level === "여유") {
+                markerImg = 'spare.svg';
+            } else if (store.level === "보통") {
+                markerImg = 'normal.svg';
+            } else {
+                markerImg = 'crowd.svg';
+            }
+
+            // 마커 이미지 객체
+            const imageSize = new kakao.maps.Size(80, 85);
+            const markerImage = new kakao.maps.MarkerImage(markerImg, imageSize);
+
+            // 좌표
+            const markerPosition = new kakao.maps.LatLng(store.latitude, store.longitude);
+
+            // 마커 생성
+            const marker = new kakao.maps.Marker({
+                position: markerPosition,
+                image: markerImage,
+                map: map
+            });
+
+            // 인포윈도우
+            const info = new kakao.maps.InfoWindow({
+                content: `<div style="padding:5px;">
+                            <strong>${store.name}</strong><br>
+                            ${store.address}<br>
+                            혼잡도: ${store.level}
+                         </div>`
+            });
+
+            // 마커 클릭 이벤트
+            kakao.maps.event.addListener(marker, "click", function() {
+                info.open(map, marker);
+            });
+        });
+
+        // 매장 리스트 UI도 같이 표시 (선택)
+        renderStoreList(stores);
+    }
+
+    // 매장 리스트 UI
+    function renderStoreList(stores) {
+        const container = document.getElementById("storeList");
+        if (!container) return;
+        container.innerHTML = "";
+
+        stores.forEach(store => {
+            // 영업 상태 판단
+            const isOpenNow = store.storeHours ? store.storeHours.some(hour => hour.isOpen) : false;
+            const statusText = isOpenNow ? "영업 중" : "영업 종료";
+            const statusColor = isOpenNow ? "green" : "red";
+
+            // 혼잡도 상태
+            let crowdText = "";
+            let crowdColor = "";
+            let levelMsg = "";
+
+            switch(store.level) {
+                case "여유":
+                    crowdText = store.level;
+                    crowdColor = "green";
+                    levelMsg = "빈 자리 다수";
+                    break;
+                case "보통":
+                    crowdText = store.level;
+                    crowdColor = "orange";
+                    levelMsg = "빈 자리 약간";
+                    break;
+                default:
+                    crowdText = store.level || "정보 없음";
+                    crowdColor = "red";
+                    levelMsg = "빈 자리 없음";
+            }
+
+            // 영업시간 텍스트 생성
+            let hoursText = "";
+            if (store.storeHours && store.storeHours.length > 0) {
+                hoursText = store.storeHours.map(hour => {
+                    const openClose = hour.isOpen ? `${hour.openTime} ~ ${hour.closeTime}` : "휴무";
+                    return `${hour.dayOfWeek}: ${openClose}`;
+                }).join('<div class="border-line"></div>');
+            }
+
+            // 매장 카드 HTML 생성
+            const cardHtml = `
+                <div class="store-card">
+                    <div class="store-img-box" style="background-size:cover; background-position:center;">
+                        <a href="./info.html?store=${encodeURIComponent(store.name)}">
+                            <img src="${store.imageUrl || './default.png'}" class="store-img">
+                        </a>
+                    </div>
+                    <div class="store-info">
+                        <div class="store-header">
+                            <span class="store-name">
+                                <a href="./info.html?store=${encodeURIComponent(store.name)}" style="text-decoration: none; color: #000000;">
+                                ${store.name}
+                                </a>
+                            </span>
+                            <button class="${store.alert ? "on" : "off"}" onclick="toggleAlert(this, '${store.name}')">
+                                <img src="${store.alert ? "./alert-icn-on.svg" : "./alert-icn.svg"}" style="width: clamp(20px, 6.5vw, 80px);">
+                            </button>
+                        </div>
+                        <p class="store-meta-time" style="color:${statusColor}; font-weight:400;">
+                            <span>${statusText}</span>
+                            <span class="hours-text">${hoursText}</span>
+                        </p>
+                        <p class="store-meta-seat">
+                            <span class="crowd-text" style="color:${crowdColor}; font-weight:400;">${crowdText}</span>
+                            <span class="level-text">${levelMsg}</span>
+                        </p>
+                        <a href="${store.addrUrl}" style="color: #7c7c7c">
+                            <p class="store-addr">${store.address}</p>
+                        </a>
+                    </div>
+                </div>
+                <div class="border-line"></div>
+            `;
+
+            container.innerHTML += cardHtml;
+        });
+    }
+
+    // 지도 로드
+    kakao.maps.load(initMap);
+
+    const DEFAULT_LAT = 36.841236;
+    const DEFAULT_LNG = 127.181333;
+
+    function getCurrentPosition(callback) {
+        if (!navigator.geolocation) {
+            alert("이 브라우저에서는 위치 정보를 지원하지 않습니다.");
+            if (typeof callback === "function") callback(DEFAULT_LAT, DEFAULT_LNG);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const userLat = position.coords.latitude;
+                const userLng = position.coords.longitude;
+                if (typeof callback === "function") callback(userLat, userLng);
+            },
+            (error) => {
+                console.error("위치 정보를 가져올 수 없습니다.", error);
+                alert("위치 정보 사용이 거부되었거나 오류가 발생했습니다. 기본 위치로 설정합니다.");
+                if (typeof callback === "function") callback(DEFAULT_LAT, DEFAULT_LNG);
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+    }
+
+    function getDistance(lat1, lng1, lat2, lng2) {
+        const R = 6371e3; 
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lng2 - lng1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return R * c;
+    }
+
+    getCurrentPosition((userLat, userLng) => {
+        stores.forEach(store => {
+            store.distance = getDistance(userLat, userLng, store.latitude, store.longitude);
+        });
+
+        const sortedByDistance = [...stores].sort((a, b) => a.distance - b.distance);
+        renderStoreList(sortedByDistance);
+
+        // 지도 중심도 현재 위치로 이동
+        map.setCenter(new kakao.maps.LatLng(userLat, userLng));
+    });
+
+    const notificationPanel = document.getElementById("notificationPanel");
+
+    setInterval(() => {
+    let updated = false; // 알림이 추가되거나 갱신되었는지 확인
+    
+    stores.forEach(store => {
+        let existing = document.querySelector(
+            `#notificationPanel .notification-item[data-store="${store.name}"]`
+        );
+
+        if (store.alert && (store.level === "보통" || store.level === "여유")) {
+            if (existing) {
+                // 이미 알림이 있으면 내용 갱신
+                existing.querySelector(".store-text").innerHTML = `
+                    <strong>${store.name}</strong><br>
+                    <span>현재 매장 내 자리 ${store.level === "여유" ? "여유 있습니다." : "약간 있습니다."}</span>
+                `;
+            } else {
+                // 없으면 새로 추가
+                const div = document.createElement("div");
+                div.className = "notification-item";
+                div.setAttribute("data-store", store.name);
+                div.innerHTML = `
+                    <div class="store-icon">
+                        <img src="${store.imageUrl}" style="width: 100%">    
+                    </div>
+                    <div class="store-text">
+                        <strong>${store.name}</strong><br>
+                        <span>현재 매장 내 자리 ${store.level === "여유" ? "여유 있습니다." : "약간 있습니다."}<span>
+                    </div>
+                `;
+                notificationPanel.prepend(div);
+            }
+            updated = true; // 새 알림 or 갱신 발생
+        } else {
+            // 알림이 꺼져 있거나 혼잡 상태면 패널에서 제거
+            if (existing) {
+                existing.remove();
+                updated = true; // 내용이 변했으므로 패널 열림
+            }
+        }
+    });
+
+    // 갱신이나 추가/삭제가 있으면 패널 자동으로 열기
+    if (updated) {
+        notificationPanel.style.display = "block";
+    }
+}, 5000);
+
+// 알림창 토글
+function toggleNotificationPanel() {
+    const panel = document.getElementById("notificationPanel");
+    if (!panel) return;
+
+    if (panel.style.display === "block") {
+        panel.style.display = "none";
+    } else {
+        panel.style.display = "block";
+    }
+}
+
+// 초기 상태 숨김
+document.addEventListener("DOMContentLoaded", () => {
+    const panel = document.getElementById("notificationPanel");
+    if(panel) panel.style.display = "none";
+});
+
+
+// 알림 버튼 클릭 시
+function toggleAlert(btn, storeName){
+    const store = stores.find(s => s.name === storeName);
+    if(store){
+        if(!store.alert){
+            if(confirm(`${store.name}\n빈자리 알림을 받으시겠습니까?`)){
+                store.alert = true;
+                btn.classList.add("on");
+                btn.classList.remove("off");
+            }
+        } else {
+            store.alert = false;
+            btn.classList.add("off");
+            btn.classList.remove("on");
+        }
+    }
+}
+
+    // 바텀시트
+    const sheet = document.getElementById("bottomSheet");
+    const dragBar = document.getElementById("dragBar");
+
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+    let moved = false; // 드래그 여부 확인용
+    let maxY = window.innerHeight * 0.6;
+
+    function toggleSheet() {
+        sheet.classList.toggle("open");
+    }
+
+    function dragStart(e) {
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        isDragging = true;
+        moved = false;
+        sheet.style.transition = "none"; // 드래그 중에는 transition 제거
+    }
+
+    function dragMove(e) {
+    if (!isDragging) return;
+        e.preventDefault(); // 스크롤 방지
+
+    let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        currentY = clientY - startY;
+
+    if (Math.abs(currentY) > 5) moved = true; // 5px 이상 움직이면 드래그로 간주
+
+    let baseY = sheet.classList.contains("open") ? 0 : maxY;
+    let moveY = baseY + currentY;
+
+    if (moveY < 0) moveY = 0;
+    if (moveY > window.innerHeight * 0.6) moveY = maxY;
+
+    sheet.style.transform = `translateY(${moveY}px)`;
+    }
+
+    function dragEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        sheet.style.transition = "transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)";
+
+        if (!moved) {
+            // 움직임이 거의 없었다면 → 클릭으로 처리
+            toggleSheet();
+            return;
+        }
+
+        // 드래그였다면 스냅 동작
+        if (currentY > maxY * 0.3) {
+            sheet.classList.remove("open");
+            sheet.style.transform = `translateY(${maxY}px)`;
+        } else {
+            sheet.classList.add("open");
+            sheet.style.transform = `translateY(0)`;
+        }
+        currentY = 0;
+    }
+
+    // 이벤트 등록
+    dragBar.addEventListener("mousedown", dragStart);
+    document.addEventListener("mousemove", dragMove);
+    document.addEventListener("mouseup", dragEnd);
+
+    dragBar.addEventListener("touchstart", dragStart);
+    document.addEventListener("touchmove", dragMove, { passive: false });
+    document.addEventListener("touchend", dragEnd);
+
+    window.addEventListener('resize', () => {
+        maxY = window.innerHeight * 0.6;
+    });
+
+    const sortState = {
+    crowd: "desc",    // 혼잡도 내림차순 초기값
+    distance: "asc"   // 거리 오름차순 초기값
+    };
+
+    function toggleSort(type){
+        if(type === "crowd"){
+            sortState.crowd = sortState.crowd === "desc" ? "asc" : "desc";
+            document.getElementById("crowdArrow").src = sortState.crowd==="desc" ? "./arrow.svg" : "./arrow-up.svg";
+            
+            const order = { 혼잡: 3, 보통: 2, 여유: 1 };
+            const sorted = [...stores].sort((a, b) => 
+                sortState.crowd === "desc" ? order[b.level] - order[a.level] : order[a.level] - order[b.level]
+            );
+            renderStoreList(sorted);
+
+        } else if(type === "distance"){
+            sortState.distance = sortState.distance === "asc" ? "desc" : "asc";
+            document.getElementById("distanceArrow").src = sortState.distance === "asc" ? "./arrow.svg" : "./arrow-up.svg";
+
+            const sorted = [...stores].sort((a, b) => 
+                sortState.distance === "asc" ? a.distance - b.distance : b.distance - a.distance
+            );
+            renderStoreList(sorted);
+        }
+    }
+    
+    // 검색창 토글
+    function toggleSearch() {
+        const input = document.getElementById("searchInput");
+
+        if (input.style.display === "none" || input.style.display === "") {
+            input.style.display = "inline-block";
+            input.style.width = "15vw";
+            input.focus();
+        } else {
+            input.style.display = "none";
+            input.style.width = "8vw";
+            input.value = ""; // 닫을 때 초기화
+            renderStores(stores); // 원래 리스트 복원
+        }
+    }
+
+    // 검색 기능
+    function searchStores() {
+        const query = document.getElementById("searchInput").value.toLowerCase();
+        const filtered = stores.filter(store =>
+            store.name.toLowerCase().includes(query)
+        );
+        renderStores(filtered);
+    }
+
+    function toggleAlert(btn, storeName){
+        const store = stores.find(s => s.name === storeName);
+        if(store){
+            store.alert = !store.alert;
+            btn.innerHTML = `<img src="${store.alert ? "./alert-icn-on.svg" : "./alert-icn.svg"}" style="width: clamp(20px, 6.5vw, 80px);">`;
+            btn.classList.toggle("on", store.alert);
+            btn.classList.toggle("off", !store.alert);
+        }
+    }
+
+    const buttons = document.querySelectorAll(".filter-btn");
+
+    buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            // 모든 버튼 active 해제
+            buttons.forEach(b => b.classList.remove("active"));
+
+            // 클릭한 버튼에 active 추가
+            btn.classList.add("active");
+
+            // 화살표 토글 (오름/내림)
+            const arrow = btn.querySelector(".arrow");
+            if (arrow.classList.contains("up")) {
+            arrow.classList.remove("up");
+            arrow.classList.add("down");
+            } else {
+            arrow.classList.remove("down");
+            arrow.classList.add("up");
+            }
+        });
+    });
+
+
+
+    </script>
+</body>
+</html>
